@@ -102,8 +102,6 @@ jobs:
                     git fetch;
                     git checkout ${CALYPSO_HASH};
                   fi
-      - *calypso_prepare_cache
-      - *calypso_restore_cache
       - *restore_nvm
       - *setup_nvm
       - *save_nvm
@@ -126,6 +124,20 @@ jobs:
                   npm ci
       - *npm_save_cache
       - run:
+          name: Test
+          command: |
+                  set +e
+
+                  make build-source CONFIG_ENV=test
+
+                  # At this stage, we can only do canary tests when CONFIG_ENV=test as the electron binary is not signed
+                  # TODO: We might be able to ignore this once we switched to electron-builders auto-update
+                  source $HOME/.nvm/nvm.sh
+                  nvm use
+                  make test
+      - *calypso_prepare_cache
+      - *calypso_restore_cache
+      - run:
           name: Build sources
           command: |
                   # only use the updater when we are building from master or a release branch
@@ -143,27 +155,10 @@ jobs:
                     source $HOME/.nvm/nvm.sh
                     nvm use
 
-
-                    if [ -n "${CALYPSO_HASH}" ]; then
-                      CONFIG_ENV=test
-                    fi
-
                     make build-source CONFIG_ENV=$CONFIG_ENV
                   else
                     make desktop/config.json CONFIG_ENV=$CONFIG_ENV
                     make build-desktop
-                  fi
-      - run:
-          name: Test
-          command: |
-                  set +e
-
-                  # At this stage, we can only do canary tests when CONFIG_ENV=test as the electron binary is not signed
-                  # TODO: We might be able to ignore this once we switched to electron-builders auto-update
-                  if [ -n "${CALYPSO_HASH}" ]; then
-                    source $HOME/.nvm/nvm.sh
-                    nvm use
-                    make test
                   fi
       - *calypso_finalize_cache
       - *calypso_save_cache
