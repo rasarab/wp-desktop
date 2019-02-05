@@ -45,6 +45,12 @@ references:
       key: v1-npm-{{ arch }}-{{ checksum "calypso/.nvmrc" }}-{{ checksum "package-lock.json" }}-{{ checksum "calypso/npm-shrinkwrap.json" }}
       paths:
         - ~/.npm
+  install_linux_dependencies: &install_linux_dependencies
+    run:
+      name: Install linux dev dependencies
+      command: |
+        apt-get update
+        apt-get -y install libxkbfile-dev libxkbfile-dev:i386 libxss-dev libx11-dev:i386
   app_cache_paths: &app_cache_paths
     - calypso-hash
     - build
@@ -71,7 +77,7 @@ references:
     restore_cache:
       name: Restore calypso cache
       keys:
-        - v4-calypso-{{ arch }}-{{ checksum "calypso-current-hash" }}
+        - v5-calypso-{{ arch }}-{{ checksum "calypso-current-hash" }}
   calypso_finalize_cache: &calypso_finalize_cache
     run:
       name: Finalize calypso cache
@@ -82,7 +88,7 @@ references:
   calypso_save_cache: &calypso_save_cache
     save_cache:
       name: Save calypso cache
-      key: v4-calypso-{{ arch }}-{{ checksum "calypso-current-hash" }}
+      key: v5-calypso-{{ arch }}-{{ checksum "calypso-current-hash" }}
       paths: *app_cache_paths
   webhook_notify_success: &webhook_notify_success
     run:
@@ -137,10 +143,9 @@ references:
 
 jobs:
   build:
-    macos:
-      xcode: "9.0"
-    shell: /bin/bash --login
-    working_directory: /Users/distiller/wp-desktop
+    docker:
+      - image: electronuserland/builder:wine-mono
+    working_directory: ~/wp-desktop
     steps:
       - checkout
       - run:
@@ -166,6 +171,7 @@ jobs:
                   openssl aes-256-cbc -d -in resource/certificates/mac.p12.enc -out resource/certificates/mac.p12 -k "${CALYPSO_SECRETS_ENCRYPTION_KEY}"
                   openssl aes-256-cbc -d -in resource/certificates/win.p12.enc -out resource/certificates/win.p12 -k "${CALYPSO_SECRETS_ENCRYPTION_KEY}"
       - *npm_restore_cache
+      - *install_linux_dependencies
       - run:
           name: Npm install
           command: |
@@ -199,7 +205,7 @@ jobs:
                       CONFIG_ENV=test
                     fi
 
-                    make build-source CONFIG_ENV=$CONFIG_ENV EMIT_STATS=true
+                    make build-source CONFIG_ENV=$CONFIG_ENV EMIT_STATS=false
                   else
                     make desktop/config.json CONFIG_ENV=$CONFIG_ENV
                     make build-desktop
@@ -219,7 +225,7 @@ jobs:
       - *calypso_finalize_cache
       - *calypso_save_cache
       - persist_to_workspace:
-          root: /Users/distiller/wp-desktop
+          root: ~/wp-desktop
           paths: *app_cache_paths
       - *webhook_notify_success
       - *webhook_notify_failed
@@ -236,11 +242,7 @@ jobs:
       - *setup_nvm
       - *save_nvm
       - *npm_restore_cache
-      - run:
-          name: Install linux dev dependencies
-          command: |
-                  apt-get update
-                  apt-get -y install libxkbfile-dev libxkbfile-dev:i386 libxss-dev libx11-dev:i386
+      - *install_linux_dependencies
       - run:
           name: Install dependencies
           name: Npm install
