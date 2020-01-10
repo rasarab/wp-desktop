@@ -1,0 +1,85 @@
+image: Visual Studio 2019
+version: '{build}'
+
+skip_branch_with_pr: true
+
+branches:
+  except:
+    - gh-pages
+
+environment:
+  # Use AppVeyor "Quad-Core" workers (4 cores, 16GB RAM)
+  appveyor_build_worker_cloud: azure-westus
+  NVS_VERSION: "1.2.0"
+  # Expose correct Python version to node-gyp
+  PYTHON: "C:\Python27\\python.exe"
+  CSC_ENC_KEY:
+    secure: ef2yQX3A9dZPQzS6r7oY7pUtzK/ICiUUDZZsh/K7eT59a4BVdxqCfIZU812MmqQHK/iC4cYLdTW+tWHrq9bJquzQgHGjgB0cTBwS9KUjyOg=
+  GH_TOKEN:
+    secure: tEkmHMzn7bAyBQRq2wOh04s7M88O0daYVkiZuAcrEn5KBDpDH/en5jTIwKYqoC2d
+
+clone_script:
+  - ps: >-
+      if(-not $env:APPVEYOR_PULL_REQUEST_NUMBER) {
+        git clone -q --branch=$env:APPVEYOR_REPO_BRANCH https://github.com/$env:appveyor_repo_name.git $env:APPVEYOR_BUILD_FOLDER
+        git checkout -qf $env:APPVEYOR_REPO_COMMIT
+      } else {
+        git clone -q https://github.com/$env:appveyor_repo_name.git 
+        $env:APPVEYOR_BUILD_FOLDER
+        git fetch -q origin +refs/pull/$env:APPVEYOR_PULL_REQUEST_NUMBER/merge:
+        git checkout -qf FETCH_HEAD
+      }
+  - cmd: git submodule update --init --recursive
+
+install:
+  # Expose MSYS2 binaries to PATH (for "make" and other GNU utilities like cat, tput, etc.)
+  - set PATH=C:\msys64\usr\bin;%PATH%
+
+  ### Set up Calypso (WSL) ###
+
+  # Install wsl nvm with Calypso node version
+  - wsl-bash -i -c "./appveyor-init-nvm-calypso.sh"
+
+  ### Set up Desktop (Windows) ###
+
+  # Install Windows nvm with Calypso node version
+  - set /p NODE_VERSION=<calypso\.nvmrc
+  - set PATH=%LOCALAPPDATA%\nvs;%PATH%
+  - git clone --branch v%NVS_VERSION% --depth 1 https://github.com/jasongin/nvs %LOCALAPPDATA%\nvs
+  - nvs add %NODE_VERSION%
+  - nvs use %NODE_VERSION%
+
+  # The release of nodejs currently being used by Calypso (12.13.1) includes a buggy version 
+  # of node-gyp for Windows. This workaround unblocks Windows builds until Calypso node 
+  # includes node-gyp >= 6.0.1, at which point this snippet and node-gyp in wp-desktop 
+  # devDependencies can be reverted.
+  # Ref: https://github.com/nodejs/node-gyp/issues/1933
+  - npm config set node_gyp "%cd%\node_modules\node-gyp\bin\node-gyp.js
+
+  - IF EXIST node_modules ( echo "Using wp-desktop node modules from cache" ) ELSE ( npm ci )
+  
+before_build:
+  # Decrypt assets
+  - openssl aes-256-cbc -md md5 -d -in resource\calypso\secrets.json.enc -out calypso\config\secrets.json -k "%CSC_ENC_KEY%"
+  - openssl aes-256-cbc -md md5 -d -in resource\certificates\win.p12.enc -out resource\certificates\win.p12 -k "%CSC_ENC_KEY%"
+
+build_script:
+  - "%cd%\\appveyor-build-sources.bat"
+  - make package
+
+after_build:
+  - ps: tar -zcf release/win-unpacked-x64.tar.gz release/win-unpacked
+  - ps: tar -zcf release/win-unpacked-ia32.tar.gz release/win-ia32-unpacked
+  - rm -rf release/github
+  - rm -rf release/win-unpacked
+  - rm -rf release/win-ia32-unpacked/
+    
+artifacts:
+  - path: release
+
+cache:
+  - node_modules -> package-lock.json
+
+# Uncomment to debug VM with RDP
+# on_finish:
+  # - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
