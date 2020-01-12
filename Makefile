@@ -91,16 +91,16 @@ dev:
 	$(MAKE) start NODE_ENV=$(NODE_ENV) DEBUG=$(DEBUG)
 
 BASE_CONFIG := ./desktop-config/config-base.json
-ENV_CONFIG := ./desktop-config-$(CONFIG_ENV).json
+TARGET_CONFIG := ./desktop-config/config-$(CONFIG_ENV).json
 
 .PHONY: desktop/config.json
 desktop/config.json:
-ifeq (,$(wildcard $(ENV_CONFIG)))
+ifeq (,$(wildcard $(TARGET_CONFIG)))
 	$(warning Config file for environment "$(CONFIG_ENV)" does not exist. Ignoring environment.)
 else
 	$(eval EXTENDED = true)
 endif
-	@node -e "const base = require('$(BASE_CONFIG)'); let env; try { env = require('$(ENV_CONFIG)'); } catch(err) {} console.log( JSON.stringify( Object.assign( base, env ), null, 2 ) )" > $@
+	@node -e "const base = require('$(BASE_CONFIG)'); let env; try { env = require('$(TARGET_CONFIG)'); } catch(err) {} console.log( JSON.stringify( Object.assign( base, env ), null, 2 ) )" > $@
 	
 	@echo "$(GREEN)$(CHECKMARK) Config built $(if $(EXTENDED),(extended: config-$(CONFIG_ENV).json),)$(RESET)"
 
